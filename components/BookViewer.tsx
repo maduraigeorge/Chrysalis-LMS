@@ -319,8 +319,6 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
         canvas.width = BASE_WIDTH;
         canvas.height = MOCK_HEIGHT;
         context.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Transparent BG for mock
     }
   }, [pdfDoc, currentPage, book.title]);
 
@@ -373,10 +371,11 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
   }, [annotations, book.id]);
 
   // Updated Fit Logic for Full Screen calculation
+  // Only called explicitly, not on every resize, to avoid zoom fighting
   const handleFitToScreen = useCallback(() => {
      if (containerRef.current) {
         const { clientWidth, clientHeight } = containerRef.current;
-        const padding = 20; 
+        const padding = 0; 
         const availableW = clientWidth - padding;
         const availableH = clientHeight - padding;
         
@@ -388,15 +387,11 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
      }
   }, [pageDimensions]);
 
-  // ResizeObserver for robust auto-fit
+  // Trigger fit only on load, file change, or sidebar toggle
   useEffect(() => {
-    if (!containerRef.current) return;
-    const resizeObserver = new ResizeObserver(() => {
-      handleFitToScreen();
-    });
-    resizeObserver.observe(containerRef.current);
-    return () => resizeObserver.disconnect();
-  }, [handleFitToScreen]);
+    handleFitToScreen();
+  }, [handleFitToScreen, pdfDoc, showResources, showThumbnails]);
+
 
   useEffect(() => {
     if (isResGlobalEdit) {
@@ -447,12 +442,16 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
+    
+    // Calculate scale factor relative to the *displayed* size
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    return { 
-      x: (e.clientX - rect.left) * scaleX, 
-      y: (e.clientY - rect.top) * scaleY 
-    };
+    
+    // Coordinates relative to the viewport
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    
+    return { x, y };
   };
 
   useEffect(() => {
@@ -684,6 +683,11 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
     );
   };
 
+  // Rotation Swapping logic
+  const isRotated = rotation % 180 !== 0;
+  const sizerWidth = isRotated ? pageDimensions.height * (zoom / 100) : pageDimensions.width * (zoom / 100);
+  const sizerHeight = isRotated ? pageDimensions.width * (zoom / 100) : pageDimensions.height * (zoom / 100);
+
   return (
     <div ref={viewerRef} className="flex flex-col h-[calc(100dvh-5rem)] bg-transparent animate-fade-in relative">
       
@@ -718,15 +722,20 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
              </div>
         </div>
 
-        {/* Main View Container */}
+        {/* Main View Container (Scrollable) */}
         <div ref={containerRef} className={`flex-1 w-full h-full overflow-auto overscroll-none touch-pan-y touch-pan-x bg-transparent flex relative ${isAnnotating ? 'cursor-crosshair' : isPanning ? 'cursor-grabbing' : 'cursor-default'}`} onMouseDown={handleContainerMouseDown} onMouseMove={handleContainerMouseMove} onMouseUp={handleContainerMouseUp} onMouseLeave={handleContainerMouseUp} onClick={toggleControls}>
            
-           {/* Center Alignment Wrapper */}
-           <div className="relative m-auto" style={{ width: `${pageDimensions.width * (zoom / 100)}px`, height: `${pageDimensions.height * (zoom / 100)}px` }}>
-               {/* Transformed Page Sizer */}
+           {/* Center Sizer Div (Layout Size) */}
+           <div className="relative m-auto flex-shrink-0" style={{ width: `${sizerWidth}px`, height: `${sizerHeight}px` }}>
+               
+               {/* Content Absolute Center (Visual Size) */}
                <div 
-                 className="relative shadow-2xl transition-transform duration-200 ease-out bg-transparent rounded-3xl overflow-hidden origin-top-left" 
-                 style={{ width: `${pageDimensions.width}px`, height: `${pageDimensions.height}px`, transform: `scale(${zoom / 100}) rotate(${rotation}deg)` }}
+                 className="absolute top-1/2 left-1/2 shadow-2xl rounded-3xl overflow-hidden origin-center bg-transparent" 
+                 style={{ 
+                    width: `${pageDimensions.width}px`, 
+                    height: `${pageDimensions.height}px`, 
+                    transform: `translate(-50%, -50%) scale(${zoom / 100}) rotate(${rotation}deg)` 
+                 }}
                  onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={stopDrawing} onPointerLeave={stopDrawing}
                >
                   {renderMainBookContent()}
