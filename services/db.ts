@@ -127,41 +127,6 @@ class LMSDatabase {
       tx.oncomplete = () => resolve();
     });
   }
-  // --- TEMPORARY MIGRATION TOOL ---
-  // Call this function once to copy local data to cloud
-  async migrateFromIndexedDB(): Promise<void> {
-    console.log("Starting migration...");
-    
-    // 1. Open the OLD local database
-    const openRequest = indexedDB.open('ChrysalisLMS_DB', 1);
-
-    openRequest.onsuccess = async (event) => {
-      const localDb = (event.target as IDBOpenDBRequest).result;
-      console.log("Old Local DB found.");
-
-      // 2. MIGRATE LIBRARY
-      const libTx = localDb.transaction('library', 'readonly');
-      const libStore = libTx.objectStore('library');
-      const libRequest = libStore.get('root_tree');
-      
-      libRequest.onsuccess = async () => {
-        if (libRequest.result && libRequest.result.data) {
-          console.log("Found Local Library. Uploading to Firebase...");
-          await this.saveLibrary(libRequest.result.data);
-          console.log("✅ Library Migrated!");
-        } else {
-          console.log("No local library data found.");
-        }
-      };
-
-      // 3. MIGRATE ANNOTATIONS (Optional - can be complex if many books)
-      // This is a basic migration for the library structure first.
-    };
-
-    openRequest.onerror = () => {
-      console.error("Could not open old Local DB. Are you in the same browser?");
-    };
-  }
 }
 
 export const dbService = new LMSDatabase();
