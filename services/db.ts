@@ -1,13 +1,10 @@
-
 import { ModuleData } from '../types';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
-const DB_NAME = 'ChrysalisLMS_DB';
-const DB_VERSION = 1;
-
 // --- CONFIGURATION ---
-// This tells the app to look for the keys in Vercel's Environment Variables
+// Using Vite environment variables
+// UPDATED: Matching your Vercel settings (VITE_PUBLIC_...)
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_PUBLIC_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -17,121 +14,178 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_PUBLIC_FIREBASE_APP_ID
 };
 
+// Safety check for keys
 if (!firebaseConfig.apiKey) {
-  console.error("FIREBASE KEYS ARE MISSING! Check your .env file.");
+  console.error("FIREBASE KEYS ARE MISSING! Check Vercel Settings or .env file.");
 }
 
 // Initialize Cloud DB
-// (We add a check to make sure keys exist to prevent crashing if config is missing)
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 export interface AnnotationData {
-  [page: number]: any[]; // Using any[] for the stroke/text objects defined in BookViewer
+  [page: number]: any[]; 
 }
 
 class LMSDatabase {
-  private db: IDBDatabase | null = null;
-
+  
+  // Backward compatibility stub
   async init(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onerror = () => reject('Error opening database');
-
-      request.onsuccess = (event) => {
-        this.db = (event.target as IDBOpenDBRequest).result;
-        resolve();
-      };
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        
-        // Store for the main library tree structure
-        if (!db.objectStoreNames.contains('library')) {
-          db.createObjectStore('library', { keyPath: 'id' });
-        }
-
-        // Store for book resources (mapped by bookId)
-        if (!db.objectStoreNames.contains('resources')) {
-          db.createObjectStore('resources', { keyPath: 'bookId' });
-        }
-
-        // Store for annotations (mapped by bookId)
-        if (!db.objectStoreNames.contains('annotations')) {
-          db.createObjectStore('annotations', { keyPath: 'bookId' });
-        }
-      };
-    });
+    console.log("Cloud DB (Firebase) Active");
+    return Promise.resolve();
   }
 
-  // --- Library Methods ---
+  // --- LIBRARY METHODS (With Safety Logic) ---
 
   async getLibrary(): Promise<ModuleData[] | null> {
-    return new Promise((resolve) => {
-      if (!this.db) return resolve(null);
-      const tx = this.db.transaction('library', 'readonly');
-      const store = tx.objectStore('library');
-      const request = store.get('root_tree');
-      request.onsuccess = () => resolve(request.result?.data || null);
-      request.onerror = () => resolve(null);
-    });
+    try {
+      const docRef = doc(db, "library", "root_tree");
+      const docSnap = await getDoc(docRef);
+
+      if (!docSnap.exists()) return null;
+
+      const mainDoc = docSnap.data();
+
+      // Case 1: Standard Single File
+      if (!mainDoc.isSplit) {
+        return mainDoc.data as ModuleData[];
+      }
+
+      // Case 2: Split Files (Reassemble chunks)
+      console.log(`Loading split library (${mainDoc.totalChunks} chunks)...`);
+      let allData: ModuleData[] = [];
+
+      for (let i = 0; i < mainDoc.totalChunks; i++) {
+        const chunkSnap = await getDoc(doc(db, "library", `chunk_${i}`));
+        if (chunkSnap.exists()) {
+          allData = [...allData, ...chunkSnap.data().data];
+        }
+      }
+      return allData;
+
+    } catch (e) {
+      console.error("Error fetching library:", e);
+      return null;
+    }
   }
 
   async saveLibrary(data: ModuleData[]): Promise<void> {
-    return new Promise((resolve) => {
-      if (!this.db) return resolve();
-      const tx = this.db.transaction('library', 'readwrite');
-      const store = tx.objectStore('library');
-      store.put({ id: 'root_tree', data });
-      tx.oncomplete = () => resolve();
-    });
+    
+    // Helper: Remove huge strings (PDFs) to prevent crashes
+    const stripLargeData = (item: any): any => {
+      if (Array.isArray(item)) return item.map(stripLargeData);
+      if (typeof item === 'object' && item !== null) {
+        const newObj: any = {};
+        for (const key in item) {
+          const val = item[key];
+          // If string is > 20KB, replace with dummy link
+          if (typeof val === 'string' && val.length > 20000) {
+             console.warn(`Cutting large file in '${key}' to save space.`);
+             newObj[key] = "https://example.com/large-file-removed"; 
+          } else {
+             newObj[key] = stripLargeData(val);
+          }
+        }
+        return newObj;
+      }
+      return item;
+    };
+
+    try {
+      console.log("Saving Library...");
+      const cleanData = stripLargeData(data); // Clean first
+
+      // Check size
+      const jsonString = JSON.stringify({ data: cleanData });
+      const sizeInBytes = new Blob([jsonString]).size;
+
+      if (sizeInBytes < 1000000) {
+        // Save as Single Document
+        await setDoc(doc(db, "library", "root_tree"), { 
+          data: cleanData,
+          isSplit: false,
+          totalChunks: 0 
+        });
+      } else {
+        // Save as Chunks (Backup plan if still big)
+        const chunkSize = 50; 
+        const totalChunks = Math.ceil(cleanData.length / chunkSize);
+        
+        await setDoc(doc(db, "library", "root_tree"), { 
+          isSplit: true, totalChunks, totalItems: cleanData.length 
+        });
+
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * chunkSize;
+          const chunkData = cleanData.slice(start, start + chunkSize);
+          await setDoc(doc(db, "library", `chunk_${i}`), { data: chunkData });
+        }
+      }
+      console.log("Library saved successfully.");
+    } catch (e) {
+      console.error("Error saving library:", e);
+    }
   }
 
-  // --- Resource Methods ---
+  // --- RESOURCE METHODS (With Cleaning) ---
 
   async getResources(bookId: string): Promise<any[] | null> {
-    return new Promise((resolve) => {
-      if (!this.db) return resolve(null);
-      const tx = this.db.transaction('resources', 'readonly');
-      const store = tx.objectStore('resources');
-      const request = store.get(bookId);
-      request.onsuccess = () => resolve(request.result?.items || null);
-      request.onerror = () => resolve(null);
-    });
+    try {
+      const docRef = doc(db, "resources", bookId);
+      const docSnap = await getDoc(docRef);
+      return docSnap.exists() ? docSnap.data().items : null;
+    } catch (e) {
+      console.error("Error fetching resources:", e);
+      return null;
+    }
   }
 
   async saveResources(bookId: string, items: any[]): Promise<void> {
-    return new Promise((resolve) => {
-      if (!this.db) return resolve();
-      const tx = this.db.transaction('resources', 'readwrite');
-      const store = tx.objectStore('resources');
-      store.put({ bookId, items });
-      tx.oncomplete = () => resolve();
-    });
+    // Re-use cleaner logic for resources
+    const stripLargeData = (item: any): any => {
+      if (Array.isArray(item)) return item.map(stripLargeData);
+      if (typeof item === 'object' && item !== null) {
+        const newObj: any = {};
+        for (const key in item) {
+          const val = item[key];
+          if (typeof val === 'string' && val.length > 20000) {
+             newObj[key] = "https://example.com/large-file-removed"; 
+          } else {
+             newObj[key] = stripLargeData(val);
+          }
+        }
+        return newObj;
+      }
+      return item;
+    };
+
+    try {
+      const cleanItems = stripLargeData(items);
+      await setDoc(doc(db, "resources", bookId), { items: cleanItems });
+    } catch (e) {
+      console.error("Error saving resources:", e);
+    }
   }
 
-  // --- Annotation Methods ---
+  // --- ANNOTATION METHODS ---
 
   async getAnnotations(bookId: string): Promise<AnnotationData | null> {
-    return new Promise((resolve) => {
-      if (!this.db) return resolve(null);
-      const tx = this.db.transaction('annotations', 'readonly');
-      const store = tx.objectStore('annotations');
-      const request = store.get(bookId);
-      request.onsuccess = () => resolve(request.result?.data || null);
-      request.onerror = () => resolve(null);
-    });
+    try {
+      const docRef = doc(db, "annotations", bookId);
+      const docSnap = await getDoc(docRef);
+      return docSnap.exists() ? docSnap.data().data : null;
+    } catch (e) {
+      console.error("Error fetching annotations:", e);
+      return null;
+    }
   }
 
   async saveAnnotations(bookId: string, data: AnnotationData): Promise<void> {
-    return new Promise((resolve) => {
-      if (!this.db) return resolve();
-      const tx = this.db.transaction('annotations', 'readwrite');
-      const store = tx.objectStore('annotations');
-      store.put({ bookId, data });
-      tx.oncomplete = () => resolve();
-    });
+    try {
+      await setDoc(doc(db, "annotations", bookId), { data });
+    } catch (e) {
+      console.error("Error saving annotations:", e);
+    }
   }
 }
 
