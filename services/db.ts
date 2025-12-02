@@ -1,5 +1,7 @@
 
 import { ModuleData } from '../types';
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
 const DB_NAME = 'ChrysalisLMS_DB';
 const DB_VERSION = 1;
@@ -14,6 +16,10 @@ const firebaseConfig = {
   messagingSenderId: process.env.VITE_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.VITE_PUBLIC_FIREBASE_APP_ID
 };
+
+if (!firebaseConfig.apiKey) {
+  console.error("FIREBASE KEYS ARE MISSING! Check your .env file.");
+}
 
 // Initialize Cloud DB
 // (We add a check to make sure keys exist to prevent crashing if config is missing)
