@@ -190,3 +190,10 @@ class LMSDatabase {
 }
 
 export const dbService = new LMSDatabase();
+
+// --- EXPOSE FOR DEBUGGING ---
+// This allows you to type 'dbService' in the browser console
+if (typeof window !== 'undefined') {
+  // @ts-ignore
+  window.dbService = dbService;
+}
