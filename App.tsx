@@ -5,7 +5,7 @@ import { GeminiAssistant } from './components/GeminiAssistant';
 import { BookViewer } from './components/BookViewer';
 import { User, UserRole, BreadcrumbItem, ModuleData } from './types';
 import { Folder, FileText, ChevronRight, Star, Music, Calculator, FlaskConical, Clock, Award, Zap, Book, PenTool, Calendar, GraduationCap, Globe, Monitor, Palette, Sparkles, BookOpen, Notebook, Plus, Trash2, Edit2, X, Save, Tag, Search, ArrowUpDown, Lock, Wrench, LayoutGrid, List, ArrowDownAZ, Tags, Check, EyeOff, Image as ImageIcon, PaintBucket, Upload, Trophy, Target, CheckSquare, Layers, Table, FileDown, FileUp, MoreHorizontal, Type as TypeIcon } from 'lucide-react';
-import { dbService } from './services/db';
+//import { dbService } from './services/db';
 
 const PREDEFINED_TAGS = ['2025-26', '2024-25', 'Thinkroom', 'Thinkers', 'Textbook', 'Workbook', 'Teacher Resource', 'Semester 1', 'Semester 2', 'Advanced', 'Remedial'];
 
