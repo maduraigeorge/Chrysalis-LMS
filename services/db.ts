@@ -1,6 +1,6 @@
 import { ModuleData } from '../types';
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, enableNetwork } from "firebase/firestore";
 
 // --- CONFIGURATION ---
 // Using Vite environment variables
@@ -14,9 +14,17 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_PUBLIC_FIREBASE_APP_ID
 };
 
+// --- DEBUG: LOG CONFIGURATION STATUS ---
+// This helps us see if Vercel is actually reading the keys
+console.log("🔥 FIREBASE CONFIG CHECK:", {
+  apiKey: firebaseConfig.apiKey ? "✅ Loaded" : "❌ MISSING",
+  projectId: firebaseConfig.projectId ? `✅ ${firebaseConfig.projectId}` : "❌ MISSING",
+  authDomain: firebaseConfig.authDomain ? "✅ Loaded" : "❌ MISSING"
+});
+
 // Safety check for keys
-if (!firebaseConfig.apiKey) {
-  console.error("FIREBASE KEYS ARE MISSING! Check Vercel Settings or .env file.");
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+  console.error("🚨 CRITICAL: FIREBASE KEYS ARE MISSING! Check Vercel Settings. Ensure variable names start with 'VITE_PUBLIC_'");
 }
 
 // Initialize Cloud DB
@@ -32,6 +40,12 @@ class LMSDatabase {
   // Backward compatibility stub
   async init(): Promise<void> {
     console.log("Cloud DB (Firebase) Active");
+    // Attempt to force network connection if browser thinks it's offline
+    try {
+        await enableNetwork(db);
+    } catch (e) {
+        // Ignore error if network is already enabled
+    }
     return Promise.resolve();
   }
 
@@ -63,7 +77,11 @@ class LMSDatabase {
       }
       return allData;
 
-    } catch (e) {
+    } catch (e: any) {
+      // Specific error handling for "Client Offline"
+      if (e.message && e.message.includes("offline")) {
+          console.error("🚨 FIREBASE OFFLINE ERROR: The app cannot reach the database. This usually means the 'projectId' or 'apiKey' is missing in the Vercel Environment Variables.");
+      }
       console.error("Error fetching library:", e);
       return null;
     }
