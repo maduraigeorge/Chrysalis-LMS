@@ -120,6 +120,11 @@ const ResourcePdfViewer: React.FC<{ url: string }> = ({ url }) => {
   const [numPages, setNumPages] = useState(0);
   const [scale, setScale] = useState(1);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  // Pan State for Resource Viewer
+  const [isPanning, setIsPanning] = useState(false);
+  const panStart = useRef<{x: number, y: number, scrollLeft: number, scrollTop: number} | null>(null);
 
   useEffect(() => {
     if (window.pdfjsLib) {
@@ -143,13 +148,47 @@ const ResourcePdfViewer: React.FC<{ url: string }> = ({ url }) => {
     }
   }, [pdf, page, scale]);
 
+  // Pan Handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (containerRef.current) {
+      setIsPanning(true);
+      panStart.current = {
+        x: e.clientX,
+        y: e.clientY,
+        scrollLeft: containerRef.current.scrollLeft,
+        scrollTop: containerRef.current.scrollTop
+      };
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isPanning || !panStart.current || !containerRef.current) return;
+    e.preventDefault();
+    const dx = e.clientX - panStart.current.x;
+    const dy = e.clientY - panStart.current.y;
+    containerRef.current.scrollLeft = panStart.current.scrollLeft - dx;
+    containerRef.current.scrollTop = panStart.current.scrollTop - dy;
+  };
+
+  const handleMouseUp = () => {
+    setIsPanning(false);
+    panStart.current = null;
+  };
+
   return (
     <div className="flex flex-col items-center h-full w-full bg-slate-100 rounded-3xl overflow-hidden relative">
-       <div className="flex-1 overflow-auto flex items-center justify-center p-4 w-full">
-          {pdf ? <canvas ref={canvasRef} className="shadow-xl bg-white rounded-lg" /> : <div className="animate-pulse text-slate-400 font-bold">Loading PDF...</div>}
+       <div 
+         ref={containerRef}
+         className={`flex-1 overflow-auto flex items-center justify-center p-4 w-full h-full ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+         onMouseDown={handleMouseDown}
+         onMouseMove={handleMouseMove}
+         onMouseUp={handleMouseUp}
+         onMouseLeave={handleMouseUp}
+       >
+          {pdf ? <canvas ref={canvasRef} className="shadow-xl bg-white rounded-lg pointer-events-none" /> : <div className="animate-pulse text-slate-400 font-bold">Loading PDF...</div>}
        </div>
        {/* Internal Controls for Resource PDF */}
-       <div className="absolute bottom-4 bg-slate-900/80 backdrop-blur text-white px-4 py-2 rounded-full flex gap-4 items-center shadow-lg">
+       <div className="absolute bottom-4 bg-slate-900/80 backdrop-blur text-white px-4 py-2 rounded-full flex gap-4 items-center shadow-lg z-10" onClick={(e) => e.stopPropagation()}>
           <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page<=1}><ChevronLeft className="w-4 h-4"/></button>
           <span className="text-xs font-bold">{page} / {numPages}</span>
           <button onClick={() => setPage(p => Math.min(numPages, p+1))} disabled={page>=numPages}><ChevronRight className="w-4 h-4"/></button>
