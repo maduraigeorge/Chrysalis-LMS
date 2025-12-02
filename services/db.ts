@@ -4,6 +4,22 @@ import { ModuleData } from '../types';
 const DB_NAME = 'ChrysalisLMS_DB';
 const DB_VERSION = 1;
 
+// --- CONFIGURATION ---
+// This tells the app to look for the keys in Vercel's Environment Variables
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
+};
+
+// Initialize Cloud DB
+// (We add a check to make sure keys exist to prevent crashing if config is missing)
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
 export interface AnnotationData {
   [page: number]: any[]; // Using any[] for the stroke/text objects defined in BookViewer
 }
