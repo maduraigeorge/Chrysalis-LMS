@@ -421,7 +421,8 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
         const scaleW = availableW / pageDimensions.width;
         const scaleH = availableH / pageDimensions.height; 
         
-        setZoom(Math.floor(Math.min(scaleW, scaleH) * 100));
+        // Reduced by 10% on default load as requested
+        setZoom(Math.floor(Math.min(scaleW, scaleH) * 100 * 0.9));
         setRotation(0);
      }
   }, [pageDimensions]);
@@ -773,7 +774,8 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
                  style={{ 
                     width: `${pageDimensions.width}px`, 
                     height: `${pageDimensions.height}px`, 
-                    transform: `translate(-50%, -50%) scale(${zoom / 100}) rotate(${rotation}deg)` 
+                    transform: `translate(-50%, -50%) scale(${zoom / 100}) rotate(${rotation}deg)`,
+                    touchAction: isAnnotating ? 'none' : 'auto'
                  }}
                  onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={stopDrawing} onPointerLeave={stopDrawing}
                >
