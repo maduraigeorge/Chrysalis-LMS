@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   BookOpen, 
-  Search,
-  Menu as MenuIcon,
+  Bell,
   LayoutDashboard,
   FileText,
   Wrench,
@@ -33,16 +32,11 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveModule,
   onRoleChange
 }) => {
-  const [isModuleMenuOpen, setIsModuleMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsModuleMenuOpen(false);
-      }
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setIsProfileMenuOpen(false);
       }
@@ -54,85 +48,59 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <>
       <header className="sticky top-0 z-[900] w-full bg-gradient-to-r from-indigo-950 to-indigo-900 border-b border-indigo-800/50 shadow-md h-14 backdrop-blur-md bg-opacity-95">
-        <div className="max-w-[1920px] mx-auto h-full flex items-center justify-between px-4 sm:px-6 relative">
+        <div className="max-w-[1920px] mx-auto h-full flex items-center justify-between px-4 sm:px-6 relative gap-4">
           
-          {/* LEFT SECTION: Menu */}
-          <div className="flex items-center gap-4 flex-1 min-w-0 mr-4">
-            
-            {/* Menu Toggle */}
-            <div className="relative flex-shrink-0" ref={menuRef}>
-              <button
-                onClick={() => setIsModuleMenuOpen(!isModuleMenuOpen)}
-                className={`
-                  flex items-center gap-2 px-3 py-1.5 rounded-full transition-all duration-200 active:scale-95 border border-transparent
-                  ${isModuleMenuOpen 
-                    ? 'bg-white/10 text-white border-white/10' 
-                    : 'text-indigo-100 hover:bg-white/10 hover:text-white hover:border-white/5'}
-                `}
-                aria-label="Menu"
-                title="Main Menu"
-              >
-                <MenuIcon className="w-5 h-5" strokeWidth={2.5} />
-                <span className="text-sm font-bold tracking-wide hidden sm:inline">Menu</span>
-              </button>
+          {/* LEFT SECTION: Static Brand Logo & Name */}
+          <div className="flex items-center flex-shrink-0">
+             <div className="flex items-center gap-3 px-2 py-1.5 rounded-xl border border-transparent select-none">
+                 {/* Logo Image with White Tint Filter */}
+                <img 
+                  src="https://play-lh.googleusercontent.com/A1K_hY4ECF4DIN6fzmKTShVGyiDsMyhUPUD5AoGEqHPOblf96bHjgIqmyTHLrpHRHA=w240-h480-rw" 
+                  alt="Chrysalis Logo" 
+                  className="h-8 w-auto brightness-0 invert opacity-100 filter drop-shadow-md" 
+                />
+                <span className="text-xl font-bold tracking-tight text-white hidden md:block font-roboto drop-shadow-sm">
+                  Chrysalis
+                </span>
+             </div>
+          </div>
 
-              {/* Dropdown Menu */}
-              <div className={`
-                absolute top-full left-0 mt-3 w-64 bg-white rounded-3xl shadow-xl border border-slate-100 p-2
-                transition-all duration-300 origin-top-left overflow-hidden z-[1000]
-                ${isModuleMenuOpen ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 -translate-y-2 pointer-events-none'}
-              `}>
-                <div className="space-y-1">
-                  {MODULES.map((module) => {
+          {/* CENTER SECTION: Navigation Modules */}
+          <div className="flex-1 flex items-center justify-center min-w-0">
+             <nav className="flex items-center gap-1 sm:gap-2 overflow-x-auto scrollbar-hide px-2">
+                {MODULES.map((module) => {
                     const Icon = module.icon;
                     const isActive = activeModule === module.id;
                     return (
                       <button
                         key={module.id}
-                        onClick={() => {
-                          setActiveModule(module.id);
-                          setIsModuleMenuOpen(false);
-                        }}
+                        onClick={() => setActiveModule(module.id)}
                         className={`
-                          w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-200
+                          flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-all duration-200 whitespace-nowrap outline-none
                           ${isActive 
-                            ? 'bg-indigo-50 text-indigo-700 shadow-sm' 
-                            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 hover:pl-5'}
+                            ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/20' 
+                            : 'text-indigo-200 hover:bg-white/5 hover:text-white'}
                         `}
-                        title={`Go to ${module.label}`}
+                        title={module.label}
                       >
                         <Icon className="w-5 h-5" strokeWidth={2.5} />
-                        <span className="flex-1 text-left">{module.label}</span>
+                        <span className="hidden lg:inline">{module.label}</span>
                         {module.badge && (
-                          <span className="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-wide">
+                          <span className="ml-1 px-1.5 py-0.5 rounded-full bg-indigo-500 text-white text-[9px] font-black uppercase tracking-wide hidden xl:inline-block">
                             {module.badge}
                           </span>
                         )}
                       </button>
                     );
-                  })}
-                </div>
-              </div>
-            </div>
+                })}
+             </nav>
           </div>
 
-          {/* CENTER SECTION: Brand (Absolutely Centered) */}
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-3 select-none pointer-events-none sm:pointer-events-auto cursor-default z-10" title="Chrysalis LMS">
-            {/* Logo Image with White Tint Filter */}
-            <img 
-              src="https://play-lh.googleusercontent.com/A1K_hY4ECF4DIN6fzmKTShVGyiDsMyhUPUD5AoGEqHPOblf96bHjgIqmyTHLrpHRHA=w240-h480-rw" 
-              alt="Chrysalis Logo" 
-              className="h-8 w-auto brightness-0 invert opacity-100 filter drop-shadow-md" 
-            />
-            <span className="text-xl font-bold tracking-tight text-white hidden md:block font-roboto drop-shadow-sm">
-              Chrysalis
-            </span>
-          </div>
-
-          {/* RIGHT SECTION: User & Tools */}
+          {/* RIGHT SECTION: Notifications & Profile */}
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0 relative z-[60]">
-            <button className="p-2 text-indigo-200 hover:text-white hover:bg-white/10 rounded-full transition-all active:scale-95" title="Global Search">
-              <Search className="w-5 h-5" strokeWidth={2.5} />
+            <button className="p-2 text-indigo-200 hover:text-white hover:bg-white/10 rounded-full transition-all active:scale-95 relative" title="Notifications">
+              <Bell className="w-5 h-5" strokeWidth={2.5} />
+              <span className="absolute top-2 right-2.5 w-2 h-2 bg-rose-500 rounded-full border border-indigo-900"></span>
             </button>
 
             {/* Profile */}
@@ -216,8 +184,8 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </header>
       {/* Mobile Menu Backdrop */}
-      {(isModuleMenuOpen || isProfileMenuOpen) && (
-        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-[800] animate-fade-in" aria-hidden="true" onClick={() => { setIsModuleMenuOpen(false); setIsProfileMenuOpen(false); }} />
+      {isProfileMenuOpen && (
+        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-[800] animate-fade-in" aria-hidden="true" onClick={() => setIsProfileMenuOpen(false)} />
       )}
     </>
   );
