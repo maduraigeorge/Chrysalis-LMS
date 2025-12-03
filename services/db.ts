@@ -2,9 +2,7 @@ import { ModuleData } from '../types';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, enableNetwork } from "firebase/firestore";
 
-// --- CONFIGURATION ---
-// Using Vite environment variables
-// UPDATED: Matching your Vercel settings (VITE_PUBLIC_...)
+// --- FIREBASE CONFIGURATION ---
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_PUBLIC_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -14,20 +12,15 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_PUBLIC_FIREBASE_APP_ID
 };
 
-// --- DEBUG: LOG CONFIGURATION STATUS ---
-// This helps us see if Vercel is actually reading the keys
-console.log("🔥 FIREBASE CONFIG CHECK:", {
-  apiKey: firebaseConfig.apiKey ? "✅ Loaded" : "❌ MISSING",
-  projectId: firebaseConfig.projectId ? `✅ ${firebaseConfig.projectId}` : "❌ MISSING",
-  authDomain: firebaseConfig.authDomain ? "✅ Loaded" : "❌ MISSING"
-});
+// --- CLOUDINARY CONFIGURATION ---
+// REPLACE THESE WITH YOUR VALUES
+const CLOUDINARY_CLOUD_NAME = "daf1zeebs"; // e.g., "demo"
+const CLOUDINARY_UPLOAD_PRESET = "lms_files"; // e.g., "ml_default"
 
-// Safety check for keys
-if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-  console.error("🚨 CRITICAL: FIREBASE KEYS ARE MISSING! Check Vercel Settings. Ensure variable names start with 'VITE_PUBLIC_'");
+if (!firebaseConfig.apiKey) {
+  console.error("🚨 FIREBASE KEYS MISSING!");
 }
 
-// Initialize Cloud DB
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -37,102 +30,111 @@ export interface AnnotationData {
 
 class LMSDatabase {
   
-  // Backward compatibility stub
   async init(): Promise<void> {
-    console.log("Cloud DB (Firebase) Active");
-    // Attempt to force network connection if browser thinks it's offline
-    try {
-        await enableNetwork(db);
-    } catch (e) {
-        // Ignore error if network is already enabled
-    }
+    console.log("Cloud DB Active (Cloudinary Mode)");
+    try { await enableNetwork(db); } catch (e) {}
     return Promise.resolve();
   }
 
-  // --- LIBRARY METHODS (With Safety Logic) ---
+  // --- HELPER: UPLOAD TO CLOUDINARY ---
+  private async uploadToCloudinary(fileDataUrl: string): Promise<string | null> {
+    try {
+      const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
+      const formData = new FormData();
+      formData.append("file", fileDataUrl);
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+
+      const response = await fetch(url, {
+        method: "POST",
+        body: formData
+      });
+
+      if (!response.ok) throw new Error("Cloudinary upload failed");
+      
+      const data = await response.json();
+      return data.secure_url; // Return the public URL
+    } catch (err) {
+      console.error("Upload Error:", err);
+      return null;
+    }
+  }
+
+  // --- PROCESS DATA RECURSIVELY ---
+  private async processAndUploadFiles(item: any): Promise<any> {
+    if (Array.isArray(item)) {
+      return Promise.all(item.map((i) => this.processAndUploadFiles(i)));
+    } 
+    else if (typeof item === 'object' && item !== null) {
+      const newObj: any = {};
+      for (const key in item) {
+        const val = item[key];
+        
+        // CHECK: Is it a large file (Base64 string > 800KB)?
+        if (typeof val === 'string' && val.length > 800000) {
+           console.log(`☁️ Uploading '${key}' to Cloudinary...`);
+           const uploadedUrl = await this.uploadToCloudinary(val);
+           
+           if (uploadedUrl) {
+             console.log(`✅ Uploaded! URL: ${uploadedUrl}`);
+             newObj[key] = uploadedUrl;
+           } else {
+             console.warn("❌ Upload failed. Using placeholder.");
+             newObj[key] = "https://example.com/upload-failed";
+           }
+        } else {
+           newObj[key] = await this.processAndUploadFiles(val);
+        }
+      }
+      return newObj;
+    }
+    return item;
+  }
+
+  // --- LIBRARY METHODS ---
 
   async getLibrary(): Promise<ModuleData[] | null> {
     try {
       const docRef = doc(db, "library", "root_tree");
       const docSnap = await getDoc(docRef);
-
       if (!docSnap.exists()) return null;
 
       const mainDoc = docSnap.data();
+      if (!mainDoc.isSplit) return mainDoc.data as ModuleData[];
 
-      // Case 1: Standard Single File
-      if (!mainDoc.isSplit) {
-        return mainDoc.data as ModuleData[];
-      }
-
-      // Case 2: Split Files (Reassemble chunks)
-      console.log(`Loading split library (${mainDoc.totalChunks} chunks)...`);
+      console.log(`Loading split library...`);
       let allData: ModuleData[] = [];
-
       for (let i = 0; i < mainDoc.totalChunks; i++) {
         const chunkSnap = await getDoc(doc(db, "library", `chunk_${i}`));
-        if (chunkSnap.exists()) {
-          allData = [...allData, ...chunkSnap.data().data];
-        }
+        if (chunkSnap.exists()) allData = [...allData, ...chunkSnap.data().data];
       }
       return allData;
-
-    } catch (e: any) {
-      // Specific error handling for "Client Offline"
-      if (e.message && e.message.includes("offline")) {
-          console.error("🚨 FIREBASE OFFLINE ERROR: The app cannot reach the database. This usually means the 'projectId' or 'apiKey' is missing in the Vercel Environment Variables.");
-      }
+    } catch (e) {
       console.error("Error fetching library:", e);
       return null;
     }
   }
 
   async saveLibrary(data: ModuleData[]): Promise<void> {
-    
-    // Helper: Remove huge strings (PDFs) to prevent crashes
-    const stripLargeData = (item: any): any => {
-      if (Array.isArray(item)) return item.map(stripLargeData);
-      if (typeof item === 'object' && item !== null) {
-        const newObj: any = {};
-        for (const key in item) {
-          const val = item[key];
-          // If string is > 20KB, replace with dummy link
-          if (typeof val === 'string' && val.length > 20000) {
-             console.warn(`Cutting large file in '${key}' to save space.`);
-             newObj[key] = "https://example.com/large-file-removed"; 
-          } else {
-             newObj[key] = stripLargeData(val);
-          }
-        }
-        return newObj;
-      }
-      return item;
-    };
-
     try {
-      console.log("Saving Library...");
-      const cleanData = stripLargeData(data); // Clean first
+      console.log("Saving Library... Checking files...");
+      
+      // 1. Upload to Cloudinary First
+      const cleanData = await this.processAndUploadFiles(data);
 
-      // Check size
+      // 2. Save cleaned data to Firebase
       const jsonString = JSON.stringify({ data: cleanData });
       const sizeInBytes = new Blob([jsonString]).size;
 
       if (sizeInBytes < 1000000) {
-        // Save as Single Document
         await setDoc(doc(db, "library", "root_tree"), { 
-          data: cleanData,
-          isSplit: false,
-          totalChunks: 0 
+          data: cleanData, isSplit: false, totalChunks: 0 
         });
       } else {
-        // Save as Chunks (Backup plan if still big)
         const chunkSize = 50; 
         const totalChunks = Math.ceil(cleanData.length / chunkSize);
-        
         await setDoc(doc(db, "library", "root_tree"), { 
           isSplit: true, totalChunks, totalItems: cleanData.length 
         });
-
         for (let i = 0; i < totalChunks; i++) {
           const start = i * chunkSize;
           const chunkData = cleanData.slice(start, start + chunkSize);
@@ -145,7 +147,7 @@ class LMSDatabase {
     }
   }
 
-  // --- RESOURCE METHODS (With Cleaning) ---
+  // --- RESOURCE METHODS ---
 
   async getResources(bookId: string): Promise<any[] | null> {
     try {
@@ -159,34 +161,17 @@ class LMSDatabase {
   }
 
   async saveResources(bookId: string, items: any[]): Promise<void> {
-    // Re-use cleaner logic for resources
-    const stripLargeData = (item: any): any => {
-      if (Array.isArray(item)) return item.map(stripLargeData);
-      if (typeof item === 'object' && item !== null) {
-        const newObj: any = {};
-        for (const key in item) {
-          const val = item[key];
-          if (typeof val === 'string' && val.length > 20000) {
-             newObj[key] = "https://example.com/large-file-removed"; 
-          } else {
-             newObj[key] = stripLargeData(val);
-          }
-        }
-        return newObj;
-      }
-      return item;
-    };
-
     try {
-      const cleanItems = stripLargeData(items);
+      console.log(`Saving resources for ${bookId}...`);
+      const cleanItems = await this.processAndUploadFiles(items);
       await setDoc(doc(db, "resources", bookId), { items: cleanItems });
+      console.log("✅ Resources saved successfully!");
     } catch (e) {
       console.error("Error saving resources:", e);
     }
   }
 
-  // --- ANNOTATION METHODS ---
-
+  // ... (Keep Annotation Methods as is) ...
   async getAnnotations(bookId: string): Promise<AnnotationData | null> {
     try {
       const docRef = doc(db, "annotations", bookId);
@@ -209,8 +194,6 @@ class LMSDatabase {
 
 export const dbService = new LMSDatabase();
 
-// --- EXPOSE FOR DEBUGGING ---
-// This allows you to type 'dbService' in the browser console
 if (typeof window !== 'undefined') {
   // @ts-ignore
   window.dbService = dbService;
