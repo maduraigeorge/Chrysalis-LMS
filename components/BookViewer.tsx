@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   X, 
@@ -118,7 +117,7 @@ const ResourcePdfViewer: React.FC<{ url: string }> = ({ url }) => {
   const [pdf, setPdf] = useState<any>(null);
   const [page, setPage] = useState(1);
   const [numPages, setNumPages] = useState(0);
-  const [scale, setScale] = useState(1);
+  const [scale, setScale] = useState(1.5);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -179,13 +178,13 @@ const ResourcePdfViewer: React.FC<{ url: string }> = ({ url }) => {
     <div className="flex flex-col items-center h-full w-full bg-slate-100 rounded-3xl overflow-hidden relative">
        <div 
          ref={containerRef}
-         className={`flex-1 overflow-auto flex items-center justify-center p-4 w-full h-full ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+         className={`flex-1 overflow-auto flex items-center justify-center p-[1px] w-full h-full ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
          onMouseDown={handleMouseDown}
          onMouseMove={handleMouseMove}
          onMouseUp={handleMouseUp}
          onMouseLeave={handleMouseUp}
        >
-          {pdf ? <canvas ref={canvasRef} className="shadow-xl bg-white rounded-lg pointer-events-none" /> : <div className="animate-pulse text-slate-400 font-bold">Loading PDF...</div>}
+          {pdf ? <canvas ref={canvasRef} className="shadow-xl bg-white rounded-lg pointer-events-none max-w-full max-h-full object-contain" /> : <div className="animate-pulse text-slate-400 font-bold">Loading PDF...</div>}
        </div>
        {/* Internal Controls for Resource PDF */}
        <div className="absolute bottom-4 bg-slate-900/80 backdrop-blur text-white px-4 py-2 rounded-full flex gap-4 items-center shadow-lg z-10" onClick={(e) => e.stopPropagation()}>
@@ -194,11 +193,11 @@ const ResourcePdfViewer: React.FC<{ url: string }> = ({ url }) => {
           <button onClick={() => setPage(p => Math.min(numPages, p+1))} disabled={page>=numPages}><ChevronRight className="w-4 h-4"/></button>
           <div className="w-px h-4 bg-white/20"></div>
           <button onClick={() => setScale(s => Math.max(0.5, s-0.2))}><ZoomOut className="w-4 h-4"/></button>
-          <button onClick={() => setScale(s => Math.min(2, s+0.2))}><ZoomIn className="w-4 h-4"/></button>
+          <button onClick={() => setScale(s => Math.min(3, s+0.2))}><ZoomIn className="w-4 h-4"/></button>
        </div>
     </div>
   );
-}
+};
 
 interface BookViewerProps {
   book: ModuleData;
@@ -262,6 +261,10 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
   const [isReordering, setIsReordering] = useState(false);
   const [isResSelectionMode, setIsResSelectionMode] = useState(false);
   const [selectedResIds, setSelectedResIds] = useState<Set<number>>(new Set());
+
+  // --- Preview State ---
+  const [previewResource, setPreviewResource] = useState<Resource | null>(null);
+  const [previewPos, setPreviewPos] = useState<{top: number, right: number} | null>(null);
   
   // --- Bulk Edit State ---
   const [isResGlobalEdit, setIsResGlobalEdit] = useState(false);
@@ -587,8 +590,27 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
     }
   };
 
+  const renderPreviewMedia = (res: Resource) => {
+    if (res.type === 'image') return <img src={res.source} className="w-full h-full object-cover" alt="" />;
+    if (res.type === 'video') return <video src={res.source} className="w-full h-full object-cover" autoPlay muted loop playsInline />;
+    
+    let Icon = FileText;
+    let colorClass = "text-slate-300";
+    switch (res.type) {
+        case 'pdf': Icon = FileText; colorClass = "text-orange-400"; break;
+        case 'link': Icon = LinkIcon; colorClass = "text-blue-400"; break;
+        case 'audio': Icon = Music; colorClass = "text-purple-400"; break;
+        case 'iframe': Icon = Code; colorClass = "text-slate-400"; break;
+        default: Icon = FileText;
+    }
+    return <div className="w-full h-full flex items-center justify-center bg-slate-50"><Icon className={`w-12 h-12 ${colorClass}`} /></div>;
+  };
+
   const renderSelectedResourceContent = (res: Resource) => {
     const wrapperClass = "w-full h-full flex items-center justify-center overflow-hidden";
+    // 10% smaller means 90% width/height approx. Adding shadow/rounded for better look since it's not full screen anymore.
+    const reducedWrapperClass = "w-full h-full flex items-center justify-center overflow-hidden shadow-2xl rounded-3xl ring-4 ring-white/50"; 
+    
     const isDataUri = res.source?.startsWith('data:');
     
     switch (res.type) {
@@ -598,14 +620,14 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
       case 'audio': return <div className={wrapperClass}><audio src={res.source} controls className="w-96" /></div>;
       case 'pdf':
         if (isDataUri) {
-            return <div className={wrapperClass}><ResourcePdfViewer url={res.source!} /></div>;
+            return <div className={reducedWrapperClass}><ResourcePdfViewer url={res.source!} /></div>;
         }
-        return <div className={wrapperClass}><ResourcePdfViewer url={res.source!} /></div>;
+        return <div className={reducedWrapperClass}><ResourcePdfViewer url={res.source!} /></div>;
       case 'doc':
          if (isDataUri) {
              return <div className="flex flex-col items-center justify-center h-full"><FileText className="w-20 h-20 text-slate-400"/><p className="mt-4 font-bold text-slate-500">Preview not available for uploaded docs.</p><a href={res.source} download={res.title} className="mt-2 text-indigo-600 underline">Download to view</a></div>;
          }
-         return <div className={wrapperClass}><iframe src={`https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(res.source || '')}`} className="w-full h-full border-none bg-white rounded-3xl" /></div>;
+         return <div className={reducedWrapperClass}><iframe src={`https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(res.source || '')}`} className="w-full h-full border-none bg-white rounded-3xl" /></div>;
       default: return <div className={wrapperClass}><a href={res.source} target="_blank" className="text-indigo-400 font-bold underline flex items-center gap-2 hover:scale-105 transition-transform"><ExternalLink className="w-6 h-6" /> Open Link</a></div>;
     }
   };
@@ -770,12 +792,11 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
                
                {/* Content Absolute Center (Visual Size) */}
                <div 
-                 className="absolute top-1/2 left-1/2 shadow-2xl rounded-3xl overflow-hidden origin-center bg-transparent" 
+                 className="absolute top-1/2 left-1/2 shadow-2xl rounded-3xl overflow-hidden origin-center bg-transparent touch-none"
                  style={{ 
                     width: `${pageDimensions.width}px`, 
                     height: `${pageDimensions.height}px`, 
                     transform: `translate(-50%, -50%) scale(${zoom / 100}) rotate(${rotation}deg)`,
-                    touchAction: isAnnotating ? 'none' : 'auto'
                  }}
                  onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={stopDrawing} onPointerLeave={stopDrawing}
                >
@@ -797,7 +818,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
         </button>
 
         {/* Resource Sidebar */}
-        <div className={`bg-white/95 backdrop-blur-xl border-l border-white/20 shadow-2xl z-[70] flex flex-col pointer-events-auto transition-all duration-300 ease-in-out relative flex-shrink-0 ${showResources ? 'w-full sm:w-96 opacity-100' : 'w-0 opacity-0 overflow-hidden'}`} onClick={(e) => e.stopPropagation()}>
+        <div className={`bg-white/95 backdrop-blur-xl border-l border-white/20 shadow-2xl z-[70] flex flex-col pointer-events-auto transition-all duration-300 ease-in-out relative flex-shrink-0 ${showResources ? 'w-full sm:w-96 opacity-100' : 'w-0 opacity-0 overflow-hidden'} hidden sm:flex`} onClick={(e) => e.stopPropagation()}>
              <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between flex-shrink-0 bg-slate-50/50">
                <h3 className="font-black text-slate-800 text-sm">Resources</h3>
                <div className="flex items-center gap-1">
@@ -811,7 +832,16 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
              {isSearchingResources && (<div className="p-2 border-b border-slate-100 animate-slide-up"><input autoFocus value={resourceSearchTerm} onChange={e => setResourceSearchTerm(e.target.value)} placeholder="Search resources..." className="w-full px-4 py-2 bg-slate-50 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-100" /></div>)}
              <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
                 {pageResources.length === 0 ? <div className="flex flex-col items-center justify-center h-full text-slate-300"><Inbox className="w-12 h-12 mb-2" /><p className="font-bold">No resources found</p></div> : pageResources.map((res, idx) => (
-                    <div key={res.id} draggable={isReordering} onDragStart={(e) => handleDragStart(e, idx)} onDragEnter={(e) => handleDragEnter(e, idx)} onDragEnd={handleDragEnd} onClick={() => { if(!isReordering && !isResSelectionMode) setActiveResource(res.id); else if(isResSelectionMode) toggleResSelection(res.id); }} className={`group flex items-start gap-3 p-3 rounded-2xl border-2 transition-all cursor-pointer relative ${activeResource === res.id ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-transparent hover:border-indigo-100 hover:shadow-md'} ${isResSelectionMode && selectedResIds.has(res.id) ? 'bg-indigo-50 border-indigo-500' : ''}`}>
+                    <div key={res.id} draggable={isReordering} onDragStart={(e) => handleDragStart(e, idx)} onDragEnter={(e) => handleDragEnter(e, idx)} onDragEnd={handleDragEnd} onClick={() => { if(!isReordering && !isResSelectionMode) setActiveResource(res.id); else if(isResSelectionMode) toggleResSelection(res.id); }} 
+                        onMouseEnter={(e) => {
+                            if (isReordering) return;
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setPreviewResource(res);
+                            setPreviewPos({ top: rect.top, right: window.innerWidth - rect.left + 16 });
+                        }}
+                        onMouseLeave={() => setPreviewResource(null)}
+                        className={`group flex items-start gap-3 p-3 rounded-2xl border-2 transition-all cursor-pointer relative ${activeResource === res.id ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-transparent hover:border-indigo-100 hover:shadow-md'} ${isResSelectionMode && selectedResIds.has(res.id) ? 'bg-indigo-50 border-indigo-500' : ''}`}
+                    >
                        {isResSelectionMode && <div className={`w-5 h-5 rounded border-2 flex items-center justify-center mt-0.5 ${selectedResIds.has(res.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>{selectedResIds.has(res.id) && <Check className="w-3 h-3 text-white" strokeWidth={4} />}</div>}
                        {isReordering && <GripVertical className="w-5 h-5 text-slate-300 cursor-move mt-0.5" />}
                        <div className="mt-0.5">{renderResourceIcon(res.type)}</div>
@@ -861,13 +891,13 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
                  <button onClick={() => setActiveResource(null)} className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-500 rounded-full transition-colors"><X className="w-5 h-5" /></button>
               </div>
            </div>
-           <div className="flex-1 overflow-hidden relative p-4 sm:p-8 flex items-center justify-center">
+           <div className="flex-1 overflow-hidden relative p-1 flex items-center justify-center">
               {renderSelectedResourceContent(selectedResource)}
            </div>
         </div>
       )}
       
-      {/* Add/Edit Resource Modal & Global Edit Table would go here ... (same as before) */}
+      {/* Add/Edit Resource Modal */}
       {isAddingResource && (
         <div className="absolute inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 pointer-events-auto">
            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md border-4 border-white/50 ring-4 ring-black/5 animate-slide-up overflow-hidden">
@@ -917,6 +947,7 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
            </div>
         </div>
       )}
+      
       {/* Global Edit Table (Admin) */}
       {isResGlobalEdit && (
         <div className="absolute inset-0 z-[80] bg-white flex flex-col animate-fade-in pointer-events-auto">
@@ -949,6 +980,29 @@ export const BookViewer: React.FC<BookViewerProps> = ({ book, userRole, userId, 
                     ))}
                  </tbody>
               </table>
+           </div>
+        </div>
+      )}
+
+      {/* Peek Preview Popup */}
+      {previewResource && previewPos && (
+        <div 
+            className="fixed z-[100] bg-white p-3 rounded-2xl shadow-2xl border border-slate-100 w-64 pointer-events-none animate-fade-in flex flex-col gap-3"
+            style={{ top: Math.min(previewPos.top, window.innerHeight - 200), right: previewPos.right }}
+        >
+           <div className="aspect-video bg-slate-50 rounded-xl overflow-hidden relative flex items-center justify-center shadow-inner">
+               {renderPreviewMedia(previewResource)}
+               {/* Overlay for non-visual types to make it look nicer */}
+               {['pdf', 'link', 'audio', 'doc', 'iframe'].includes(previewResource.type) && (
+                 <div className="absolute inset-0 bg-slate-50/50" />
+               )}
+           </div>
+           <div>
+               <h4 className="font-bold text-slate-800 text-xs leading-tight line-clamp-2">{previewResource.title}</h4>
+               <div className="flex items-center gap-2 mt-1">
+                 <span className="text-[9px] uppercase font-black text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{previewResource.type}</span>
+                 {previewResource.page && <span className="text-[9px] font-bold text-slate-400">Pg {previewResource.page}</span>}
+               </div>
            </div>
         </div>
       )}
