@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 // Ensure API key is present; in a real app, handle missing key gracefully in UI
-const apiKey = process.env.API_KEY || ''; 
+const apiKey = import.meta.env.VITE_API_KEY || ''; 
 const ai = new GoogleGenAI({ apiKey });
 
 export const askLMSAssistant = async (
