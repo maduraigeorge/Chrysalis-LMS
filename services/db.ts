@@ -13,9 +13,9 @@ const firebaseConfig = {
 };
 
 // --- CLOUDINARY CONFIGURATION ---
-// REPLACE THESE WITH YOUR VALUES
-const CLOUDINARY_CLOUD_NAME = "daf1zeebs"; // e.g., "demo"
-const CLOUDINARY_UPLOAD_PRESET = "lms_files"; // e.g., "ml_default"
+// Replace with your actual Cloudinary name and preset
+const CLOUDINARY_CLOUD_NAME = "YOUR_CLOUD_NAME_HERE"; 
+const CLOUDINARY_UPLOAD_PRESET = "lms_files"; 
 
 if (!firebaseConfig.apiKey) {
   console.error("🚨 FIREBASE KEYS MISSING!");
@@ -37,42 +37,73 @@ class LMSDatabase {
   }
 
   // --- HELPER: UPLOAD TO CLOUDINARY ---
-  private async uploadToCloudinary(fileDataUrl: string): Promise<string | null> {
+  private async uploadToCloudinary(fileDataUrl: string, fileName: string): Promise<string | null> {
     try {
       const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
       const formData = new FormData();
       formData.append("file", fileDataUrl);
       formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+      formData.append("public_id", fileName);
+      formData.append("use_filename", "true"); 
+      formData.append("unique_filename", "false"); 
 
       const response = await fetch(url, {
         method: "POST",
         body: formData
       });
 
-      if (!response.ok) throw new Error("Cloudinary upload failed");
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Cloudinary Error: ${errText}`);
+      }
       
       const data = await response.json();
-      return data.secure_url; // Return the public URL
+      return data.secure_url; 
     } catch (err) {
       console.error("Upload Error:", err);
       return null;
     }
   }
 
-  // --- PROCESS DATA RECURSIVELY ---
+  // --- PROCESS DATA RECURSIVELY (AND CLEAN UNDEFINED) ---
   private async processAndUploadFiles(item: any): Promise<any> {
+    // FIX: Convert top-level undefined to null immediately
+    if (item === undefined) {
+      return null; 
+    }
+
     if (Array.isArray(item)) {
-      return Promise.all(item.map((i) => this.processAndUploadFiles(i)));
+      const processedArray = await Promise.all(item.map((i) => this.processAndUploadFiles(i)));
+      // FIX: Ensure no undefineds sneak into arrays
+      return processedArray.map(i => i === undefined ? null : i);
     } 
     else if (typeof item === 'object' && item !== null) {
       const newObj: any = {};
       for (const key in item) {
         const val = item[key];
         
+        // FIX: Explicitly handle undefined values in objects
+        if (val === undefined) {
+            newObj[key] = null; // Convert to null so Firestore accepts it
+            continue;
+        }
+
         // CHECK: Is it a large file (Base64 string > 800KB)?
         if (typeof val === 'string' && val.length > 800000) {
            console.log(`☁️ Uploading '${key}' to Cloudinary...`);
-           const uploadedUrl = await this.uploadToCloudinary(val);
+           
+           // Detect Extension
+           let extension = "";
+           if (val.startsWith("data:application/pdf")) extension = ".pdf";
+           else if (val.startsWith("data:image/jpeg")) extension = ".jpg";
+           else if (val.startsWith("data:image/png")) extension = ".png";
+           else if (val.startsWith("data:video/mp4")) extension = ".mp4";
+           
+           const timestamp = Date.now();
+           const randomId = Math.random().toString(36).substring(7);
+           const fileName = `${key}_${timestamp}_${randomId}${extension}`;
+
+           const uploadedUrl = await this.uploadToCloudinary(val, fileName);
            
            if (uploadedUrl) {
              console.log(`✅ Uploaded! URL: ${uploadedUrl}`);
@@ -82,6 +113,7 @@ class LMSDatabase {
              newObj[key] = "https://example.com/upload-failed";
            }
         } else {
+           // Recurse
            newObj[key] = await this.processAndUploadFiles(val);
         }
       }
@@ -118,7 +150,7 @@ class LMSDatabase {
     try {
       console.log("Saving Library... Checking files...");
       
-      // 1. Upload to Cloudinary First
+      // 1. Upload to Cloudinary & Clean undefined values
       const cleanData = await this.processAndUploadFiles(data);
 
       // 2. Save cleaned data to Firebase
@@ -171,7 +203,8 @@ class LMSDatabase {
     }
   }
 
-  // ... (Keep Annotation Methods as is) ...
+  // --- ANNOTATION METHODS ---
+
   async getAnnotations(bookId: string): Promise<AnnotationData | null> {
     try {
       const docRef = doc(db, "annotations", bookId);
