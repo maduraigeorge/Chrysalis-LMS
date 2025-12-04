@@ -87,8 +87,9 @@ class LMSDatabase {
       formData.append("file", fileDataUrl);
       formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
       formData.append("public_id", fileName);
-      formData.append("use_filename", "true"); 
-      formData.append("unique_filename", "false"); 
+      
+      // FIX: Removed 'use_filename' and 'unique_filename' as they cause 400 Bad Request
+      // The 'public_id' above is sufficient to name the file correctly.
 
       const response = await fetch(url, {
         method: "POST",
