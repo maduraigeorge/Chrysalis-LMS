@@ -17,8 +17,51 @@ const firebaseConfig = {
 const CLOUDINARY_CLOUD_NAME = "daf1zeebs"; 
 const CLOUDINARY_UPLOAD_PRESET = "lms_files"; 
 
+// --- NOTIFICATION HELPER (Simple Toast) ---
+const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
+  if (typeof document === 'undefined') return;
+
+  const toast = document.createElement('div');
+  toast.textContent = message;
+  
+  // Styles for the notification
+  Object.assign(toast.style, {
+    position: 'fixed',
+    bottom: '20px',
+    right: '20px',
+    padding: '12px 24px',
+    borderRadius: '8px',
+    color: 'white',
+    fontSize: '14px',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontWeight: '500',
+    zIndex: '10000',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+    transition: 'opacity 0.3s ease-in-out',
+    opacity: '0',
+    transform: 'translateY(10px)',
+    backgroundColor: type === 'success' ? '#10B981' : type === 'error' ? '#EF4444' : '#F59E0B'
+  });
+
+  document.body.appendChild(toast);
+
+  // Animate in
+  requestAnimationFrame(() => {
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+  });
+
+  // Remove after 3 seconds
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(10px)';
+    setTimeout(() => document.body.removeChild(toast), 300);
+  }, 4000);
+};
+
 if (!firebaseConfig.apiKey) {
   console.error("🚨 FIREBASE KEYS MISSING!");
+  showToast("Firebase Keys Missing! Check Console.", "error");
 }
 
 const app = initializeApp(firebaseConfig);
@@ -31,7 +74,7 @@ export interface AnnotationData {
 class LMSDatabase {
   
   async init(): Promise<void> {
-    console.log("Cloud DB Active (Cloudinary Mode)");
+    console.log("Cloud DB Active (Cloudinary Mode - All Files)");
     try { await enableNetwork(db); } catch (e) {}
     return Promise.resolve();
   }
@@ -68,13 +111,10 @@ class LMSDatabase {
   // --- PROCESS DATA RECURSIVELY (AND CLEAN UNDEFINED) ---
   private async processAndUploadFiles(item: any): Promise<any> {
     // FIX: Convert top-level undefined to null immediately
-    if (item === undefined) {
-      return null; 
-    }
+    if (item === undefined) return null; 
 
     if (Array.isArray(item)) {
       const processedArray = await Promise.all(item.map((i) => this.processAndUploadFiles(i)));
-      // FIX: Ensure no undefineds sneak into arrays
       return processedArray.map(i => i === undefined ? null : i);
     } 
     else if (typeof item === 'object' && item !== null) {
@@ -84,13 +124,14 @@ class LMSDatabase {
         
         // FIX: Explicitly handle undefined values in objects
         if (val === undefined) {
-            newObj[key] = null; // Convert to null so Firestore accepts it
+            newObj[key] = null; 
             continue;
         }
 
-        // CHECK: Is it a large file (Base64 string > 800KB)?
-        if (typeof val === 'string' && val.length > 800000) {
+        // CHECK: Is it a file? (Checks if string starts with "data:")
+        if (typeof val === 'string' && val.startsWith('data:')) {
            console.log(`☁️ Uploading '${key}' to Cloudinary...`);
+           showToast(`Uploading file for ${key}...`, 'warning'); // Notify user upload started
            
            // Detect Extension
            let extension = "";
@@ -110,6 +151,7 @@ class LMSDatabase {
              newObj[key] = uploadedUrl;
            } else {
              console.warn("❌ Upload failed. Using placeholder.");
+             showToast(`Failed to upload ${key}. Saving text only.`, 'error');
              newObj[key] = "https://example.com/upload-failed";
            }
         } else {
@@ -142,6 +184,7 @@ class LMSDatabase {
       return allData;
     } catch (e) {
       console.error("Error fetching library:", e);
+      showToast("Error loading library. Check connection.", "error");
       return null;
     }
   }
@@ -174,8 +217,10 @@ class LMSDatabase {
         }
       }
       console.log("Library saved successfully.");
+      showToast("Library saved successfully!", "success");
     } catch (e) {
       console.error("Error saving library:", e);
+      showToast("Error saving library. See console.", "error");
     }
   }
 
@@ -198,8 +243,10 @@ class LMSDatabase {
       const cleanItems = await this.processAndUploadFiles(items);
       await setDoc(doc(db, "resources", bookId), { items: cleanItems });
       console.log("✅ Resources saved successfully!");
+      showToast("Book resources saved successfully!", "success");
     } catch (e) {
       console.error("Error saving resources:", e);
+      showToast("Failed to save book resources.", "error");
     }
   }
 
@@ -219,6 +266,7 @@ class LMSDatabase {
   async saveAnnotations(bookId: string, data: AnnotationData): Promise<void> {
     try {
       await setDoc(doc(db, "annotations", bookId), { data });
+      // Optional: No toast here to avoid spamming while drawing
     } catch (e) {
       console.error("Error saving annotations:", e);
     }
