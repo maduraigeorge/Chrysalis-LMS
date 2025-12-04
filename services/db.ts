@@ -13,8 +13,8 @@ const firebaseConfig = {
 };
 
 // --- CLOUDINARY CONFIGURATION ---
-// Replace with your actual Cloudinary name and preset
-const CLOUDINARY_CLOUD_NAME = "YOUR_CLOUD_NAME_HERE"; 
+// 🚨 TODO: REPLACE "YOUR_CLOUD_NAME_HERE" WITH YOUR ACTUAL CLOUD NAME FROM CLOUDINARY DASHBOARD
+const CLOUDINARY_CLOUD_NAME = "daf1zeebs"; 
 const CLOUDINARY_UPLOAD_PRESET = "lms_files"; 
 
 if (!firebaseConfig.apiKey) {
